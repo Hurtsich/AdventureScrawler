@@ -18,6 +18,7 @@ import (
 var (
 	Client       = resty.New()
 	Shop         []string
+	ItemsList    []Item
 	DungeonsList []string
 	Logs         []DungeonLog
 
@@ -64,15 +65,75 @@ func main() {
 
 	fmt.Printf("Nombre d'aventures: %d\n", len(DungeonsList))
 	fmt.Printf("Nombre d'items: %d", len(Shop))
-
+	exportItems(ItemsList)
 	//Crawl(headersGet)
 	//BestExploration(headersGet)
 	//BasicExploration(headersGet)
-	Exploration(headersGet)
+	//Exploration(headersGet)
+	Bulk(headersGet)
 }
 
-func Exploration(get map[string]string) {
-	
+func Bulk(headers map[string]string) {
+	var items []string
+	for i := 0; i < 10; i++ {
+		items = append(items, Shop[rand.Intn(len(Shop))])
+	}
+	_, err := SupplyBackpack(NewBackpack(items...), headers)
+	if err != nil {
+		fmt.Printf("supply backpack: %v", err)
+	}
+	for _, adventure := range DungeonsList {
+		resp, err := ExploreDungeons(adventure, headers)
+		if err != nil {
+			fmt.Printf("explore %s: %v", adventure, err)
+		}
+		ExploitResponse(resp, adventure, items)
+	}
+	exportLogs(Logs, "../data/bulk.csv")
+}
+
+func Exploration(headers map[string]string) {
+	items := []string{"Champignon", "Arc", "Armure en pierre", "Grappin", "Torche", "Kit de premier soins", "Bouclier en fer"}
+	_, err := SupplyBackpack(NewBackpack(items...), headers)
+	if err != nil {
+		fmt.Printf("supply backpack: %v", err)
+	}
+	resp, err := ExploreDungeons("addo-solitudo-voluptatem-demo-theatrum-apostolus", headers)
+	if err != nil {
+		fmt.Printf("explore addo-solitudo-voluptatem-demo-theatrum-apostolus: %v", err)
+	}
+	ExploitResponse(resp, "addo-solitudo-voluptatem-demo-theatrum-apostolus", items)
+	resp, err = ExploreDungeons("553", headers)
+	if err != nil {
+		fmt.Printf("explore 553: %v", err)
+	}
+	ExploitResponse(resp, "553", items)
+	resp, err = ExploreDungeons("1622", headers)
+	if err != nil {
+		fmt.Printf("explore 1622: %v", err)
+	}
+	ExploitResponse(resp, "1622", items)
+	resp, err = ExploreDungeons("undique-ancilla-uberrime-sol-quas-contego", headers)
+	if err != nil {
+		fmt.Printf("explore undique-ancilla-uberrime-sol-quas-contego: %v", err)
+	}
+	ExploitResponse(resp, "undique-ancilla-uberrime-sol-quas-contego", items)
+	resp, err = ExploreDungeons("addo-solitudo-voluptatem-demo-theatrum-apostolus", headers)
+	if err != nil {
+		fmt.Printf("explore addo-solitudo-voluptatem-demo-theatrum-apostolus: %v", err)
+	}
+	ExploitResponse(resp, "addo-solitudo-voluptatem-demo-theatrum-apostolus", items)
+	resp, err = ExploreDungeons("calamitas-tumultus-articulus-titulus-coerceo-vulgo", headers)
+	if err != nil {
+		fmt.Printf("explore calamitas-tumultus-articulus-titulus-coerceo-vulgo: %v", err)
+	}
+	ExploitResponse(resp, "calamitas-tumultus-articulus-titulus-coerceo-vulgo", items)
+	resp, err = ExploreDungeons("addo-solitudo-voluptatem-demo-theatrum-apostolus", headers)
+	if err != nil {
+		fmt.Printf("explore addo-solitudo-voluptatem-demo-theatrum-apostolus: %v", err)
+	}
+	ExploitResponse(resp, "addo-solitudo-voluptatem-demo-theatrum-apostolus", items)
+	exportLogs(Logs, "../data/addo-solitudo-voluptatem-demo-theatrum-apostolus.csv")
 }
 
 func Crawl(headers map[string]string) {
@@ -166,6 +227,34 @@ func BestExploration(headers map[string]string) {
 	exportLogs(Logs, "../data/best.csv")
 }
 
+func exportItems(items []Item) {
+	var prettyJSON bytes.Buffer
+	logJSON, err := json.Marshal(items)
+	if err != nil {
+		fmt.Printf("marshal Logs: %v", err)
+	}
+	if err = json.Indent(&prettyJSON, logJSON, "", "    "); err != nil {
+		fmt.Printf("pretty Logs: %v", err)
+	}
+	fmt.Println(prettyJSON.String())
+
+	logFile, err := os.Create("../data/items.csv")
+	if err != nil {
+		fmt.Printf("create log logFile: %v", err)
+	}
+	defer logFile.Close()
+
+	writer := csv.NewWriter(logFile)
+	defer writer.Flush()
+
+	for _, item := range items {
+		err = writer.Write([]string{item.Name, item.Description})
+		if err != nil {
+			fmt.Printf("writing log line: %v", err)
+		}
+	}
+}
+
 func exportLogs(logs []DungeonLog, filename string) {
 	var prettyJSON bytes.Buffer
 	logJSON, err := json.Marshal(logs)
@@ -239,17 +328,21 @@ func Explore(headers map[string]string) error {
 			fmt.Printf("explore dungeon %s: %v", dungeon, err)
 		}
 		cptRq = resp.Header().Get("X-Ratelimit-Remaining")
-		body := strings.ReplaceAll(string(resp.Body()), `\n`, "")
-		var log Log
-		err = json.Unmarshal([]byte(body), &log)
-		if err != nil {
-			fmt.Printf("unmarshal log: %v", err)
-		}
-		log.ItemName = append(log.ItemName, item)
-		Logs = append(Logs, DungeonLog{dungeon, log})
+		ExploitResponse(resp, dungeon, []string{item})
 		//}
 	}
 	return nil
+}
+
+func ExploitResponse(resp *resty.Response, dungeon string, items []string) {
+	body := strings.ReplaceAll(string(resp.Body()), `\n`, "")
+	var log Log
+	err := json.Unmarshal([]byte(body), &log)
+	if err != nil {
+		fmt.Printf("unmarshal log: %v", err)
+	}
+	log.ItemName = append(log.ItemName, items...)
+	Logs = append(Logs, DungeonLog{dungeon, log})
 }
 
 func GetItems(headers map[string]string) error {
@@ -270,6 +363,7 @@ func GetItems(headers map[string]string) error {
 
 		for _, item := range s.Items {
 			Shop = append(Shop, item.Name)
+			ItemsList = append(ItemsList, item)
 		}
 		totalItems = s.Total
 	}
